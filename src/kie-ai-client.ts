@@ -152,14 +152,12 @@ export class KieAiClient {
       apiType === "wan-animate" ||
       apiType === "topaz-upscale" ||
       apiType === "happyhorse-video" ||
-      apiType === "gpt-image-2"
+      apiType === "gpt-image-2" ||
+      // Aleph moved to the Market API (jobs/createTask), so its tasks are
+      // polled through jobs/recordInfo like every other Market model.
+      apiType === "runway-aleph-video"
     ) {
       return this.makeRequest<any>(`/jobs/recordInfo?taskId=${taskId}`, "GET");
-    } else if (apiType === "runway-aleph-video") {
-      return this.makeRequest<any>(
-        `/api/v1/aleph/record-info?taskId=${taskId}`,
-        "GET",
-      );
     } else if (apiType === "midjourney") {
       return this.makeRequest<any>(`/mj/record-info?taskId=${taskId}`, "GET");
     } else if (apiType === "flux-kontext-image") {
@@ -341,19 +339,26 @@ export class KieAiClient {
   async generateRunwayAlephVideo(
     request: RunwayAlephVideoRequest,
   ): Promise<KieAiResponse<TaskResponse>> {
-    const jobRequest = {
+    // Kie moved Aleph to the Market API: jobs/createTask with a model id and
+    // a snake_case input object. The tool schema stays camelCase; map here.
+    const input: any = {
       prompt: request.prompt,
-      videoUrl: request.videoUrl,
-      waterMark: request.waterMark || "",
-      uploadCn: request.uploadCn || false,
-      aspectRatio: request.aspectRatio || "16:9",
-      ...(request.seed !== undefined && { seed: request.seed }),
-      ...(request.referenceImage && { referenceImage: request.referenceImage }),
+      video_url: request.videoUrl,
+      aspect_ratio: request.aspectRatio || "16:9",
+      upload_cn: request.uploadCn || false,
+    };
+    if (request.waterMark) input.watermark = request.waterMark;
+    if (request.seed !== undefined) input.seed = request.seed;
+    if (request.referenceImage) input.reference_image = request.referenceImage;
+
+    const jobRequest = {
+      model: "runway/gen4-aleph",
+      input,
       callBackUrl: request.callBackUrl || process.env.KIE_AI_CALLBACK_URL,
     };
 
     return this.makeRequest<TaskResponse>(
-      "/api/v1/aleph/generate",
+      "/jobs/createTask",
       "POST",
       jobRequest,
     );
