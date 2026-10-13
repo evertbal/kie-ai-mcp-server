@@ -40,6 +40,7 @@ import {
   GrokImagineSchema,
   InfiniTalkSchema,
   KlingAvatarSchema,
+  OmniHumanSchema,
   TopazUpscaleImageSchema,
   HappyHorseVideoSchema,
   KieAiConfig,
@@ -79,6 +80,7 @@ class KieAiMcpServer {
       "grok_imagine", // xAI multimodal: text-to-image/video, image-to-video, upscale
       "infinitalk_lip_sync", // MeiGen-AI lip sync video generator
       "kling_avatar", // Kuaishou talking avatar video generator
+      "omnihuman_video", // ByteDance OmniHuman 1.5 digital human video
       "midjourney_generate", // Also generates videos (mj_video, mj_video_hd modes)
     ],
     audio: ["suno_generate_music", "elevenlabs_tts", "elevenlabs_ttsfx"],
@@ -1272,6 +1274,60 @@ class KieAiMcpServer {
           },
         },
         {
+          name: "omnihuman_video",
+          description:
+            "Generate lifelike talking/singing digital human videos with ByteDance OmniHuman 1.5. Portrait image + audio in, lip-synced video out with natural expressions, gestures and camera feel. Pricing: ~27 credits/s (~$0.135/s). Audio must be under 60s; 15s or less recommended for quality",
+          inputSchema: {
+            type: "object",
+            properties: {
+              image_url: {
+                type: "string",
+                description: "URL of the portrait image (JPEG, PNG, WEBP)",
+                format: "uri",
+              },
+              audio_url: {
+                type: "string",
+                description:
+                  "URL of the audio that drives speech (MP3, WAV, etc.; under 60s, 15s or less recommended)",
+                format: "uri",
+              },
+              prompt: {
+                type: "string",
+                description:
+                  "Optional text guidance for expression, gesture and camera (max 300 characters)",
+                minLength: 1,
+                maxLength: 300,
+              },
+              output_resolution: {
+                type: "string",
+                description: "Output resolution: 720 or 1080 (default 1080)",
+                enum: ["720", "1080"],
+                default: "1080",
+              },
+              mask_url: {
+                type: "array",
+                items: { type: "string", format: "uri" },
+                description:
+                  "Optional: subject masks to choose which person speaks (from OmniHuman subject detection)",
+              },
+              pe_fast_mode: {
+                type: "boolean",
+                description: "Optional: faster generation with some quality loss",
+              },
+              seed: {
+                type: "integer",
+                description: "Optional: seed for reproducibility (default random)",
+              },
+              callBackUrl: {
+                type: "string",
+                description: "Optional: URL for task completion notifications",
+                format: "uri",
+              },
+            },
+            required: ["image_url", "audio_url"],
+          },
+        },
+        {
           name: "midjourney_generate",
           description:
             "Generate images and videos using Midjourney AI models (unified tool for text-to-image, image-to-image, style reference, omni reference, and video generation)",
@@ -2287,6 +2343,9 @@ class KieAiMcpServer {
 
           case "kling_avatar":
             return await this.handleKlingAvatar(args);
+
+          case "omnihuman_video":
+            return await this.handleOmniHuman(args);
 
           case "midjourney_generate":
             return await this.handleMidjourneyGenerate(args);
@@ -4170,6 +4229,65 @@ class KieAiMcpServer {
         image_url: "Required: URL of portrait image to animate",
         audio_url: "Required: URL of audio file for lip sync",
         prompt: "Required: Text prompt to guide video generation",
+      });
+    }
+  }
+
+  private async handleOmniHuman(args: any) {
+    try {
+      const request = OmniHumanSchema.parse(args);
+
+      // Use intelligent callback URL fallback
+      request.callBackUrl = this.getCallbackUrl(request.callBackUrl);
+
+      const response = await this.client.generateOmniHuman(request);
+
+      if (response.code === 200 && response.data?.taskId) {
+        await this.db.createTask({
+          task_id: response.data.taskId,
+          api_type: "omnihuman",
+          status: "pending",
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  success: true,
+                  task_id: response.data.taskId,
+                  message: "OmniHuman 1.5 video task created successfully",
+                  parameters: {
+                    output_resolution: request.output_resolution || "1080",
+                    prompt: request.prompt
+                      ? request.prompt.substring(0, 100) +
+                        (request.prompt.length > 100 ? "..." : "")
+                      : undefined,
+                    pe_fast_mode: request.pe_fast_mode,
+                    seed: request.seed,
+                  },
+                  pricing: "~27 credits/s (~$0.135/s), audio under 60s",
+                  next_steps: [
+                    `Use get_task_status with task_id: ${response.data.taskId} to check progress`,
+                    'Video will be available when status is "completed"',
+                  ],
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } else {
+        throw new Error(response.msg || "Failed to create OmniHuman task");
+      }
+    } catch (error) {
+      return this.formatError("omnihuman_video", error, {
+        image_url: "Required: URL of portrait image",
+        audio_url: "Required: URL of audio file (under 60s)",
+        prompt: "Optional: guidance, max 300 characters",
+        output_resolution: "Optional: 720 or 1080 (default)",
       });
     }
   }

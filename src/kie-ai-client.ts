@@ -24,6 +24,7 @@ import {
   GrokImagineRequest,
   InfiniTalkRequest,
   KlingAvatarRequest,
+  OmniHumanRequest,
   TopazUpscaleImageRequest,
   HappyHorseVideoRequest,
   ImageResponse,
@@ -1113,6 +1114,34 @@ export class KieAiClient {
 
     const jobRequest = {
       model,
+      input,
+      callBackUrl: request.callBackUrl || process.env.KIE_AI_CALLBACK_URL,
+    };
+
+    return this.makeRequest<TaskResponse>(
+      "/jobs/createTask",
+      "POST",
+      jobRequest,
+    );
+  }
+
+  async generateOmniHuman(
+    request: OmniHumanRequest,
+  ): Promise<KieAiResponse<TaskResponse>> {
+    const input: any = {
+      image_url: request.image_url,
+      audio_url: request.audio_url,
+      output_resolution: request.output_resolution || "1080",
+    };
+
+    if (request.prompt) input.prompt = request.prompt;
+    if (request.mask_url?.length) input.mask_url = request.mask_url;
+    if (request.pe_fast_mode !== undefined)
+      input.pe_fast_mode = request.pe_fast_mode;
+    if (request.seed !== undefined) input.seed = request.seed;
+
+    const jobRequest = {
+      model: "omnihuman-1-5",
       input,
       callBackUrl: request.callBackUrl || process.env.KIE_AI_CALLBACK_URL,
     };

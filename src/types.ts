@@ -449,6 +449,21 @@ export const KlingAvatarSchema = z.object({
 
 export type KlingAvatarRequest = z.infer<typeof KlingAvatarSchema>;
 
+// OmniHuman 1.5 - ByteDance digital human video (image + audio to talking video)
+export const OmniHumanSchema = z.object({
+  image_url: z.string().url(),
+  audio_url: z.string().url(),
+  prompt: z.string().min(1).max(300).optional(),
+  // Output resolution: 720 or 1080 (default 1080)
+  output_resolution: z.enum(["720", "1080"]).default("1080").optional(),
+  mask_url: z.array(z.string().url()).optional(),
+  pe_fast_mode: z.boolean().optional(),
+  seed: z.number().int().optional(),
+  callBackUrl: z.string().url().optional(),
+});
+
+export type OmniHumanRequest = z.infer<typeof OmniHumanSchema>;
+
 // HappyHorse 1.0 Video - Alibaba ATH multi-mode video generation
 export const HappyHorseVideoSchema = z
   .object({
@@ -1008,6 +1023,7 @@ export interface TaskRecord {
     | "grok-imagine"
     | "infinitalk"
     | "kling-avatar"
+    | "omnihuman"
     | "topaz-upscale"
     | "happyhorse-video";
   status: "pending" | "processing" | "completed" | "failed";
